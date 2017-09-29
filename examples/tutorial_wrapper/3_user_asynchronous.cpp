@@ -1,10 +1,12 @@
-﻿// ------------------------- OpenPose Library Tutorial - Thread - Example 2 - Synchronous -------------------------
-// Synchronous mode: ideal for performance. The user can add his own frames producer / post-processor / consumer to the OpenPose wrapper or use the default ones.
+// ------------------------- OpenPose Library Tutorial - Thread - Example 1 - Asynchronous -------------------------
+// Asynchronous mode: ideal for fast prototyping when performance is not an issue. The user emplaces/pushes and pops frames from the OpenPose wrapper
+// when he desires to.
 
 // This example shows the user how to use the OpenPose wrapper class:
-    // 1. Extract and render keypoint / heatmap / PAF of that image
-    // 2. Save the results on disc
-    // 3. Display the rendered pose
+    // 1. User reads images
+    // 2. Extract and render keypoint / heatmap / PAF of that image
+    // 3. Save the results on disk
+    // 4. User displays the rendered pose
     // Everything in a multi-thread scenario
 // In addition to the previous OpenPose modules, we also need to use:
     // 1. `core` module:
@@ -15,16 +17,12 @@
 
 // C++ std library dependencies
 #include <chrono> // `std::chrono::` functions and classes, e.g. std::chrono::milliseconds
-#include <string>
 #include <thread> // std::this_thread
-#include <vector>
 // Other 3rdparty dependencies
 #include <gflags/gflags.h> // DEFINE_bool, DEFINE_int32, DEFINE_int64, DEFINE_uint64, DEFINE_double, DEFINE_string
 #include <glog/logging.h> // google::InitGoogleLogging
-
 // OpenPose dependencies
 #include <openpose/headers.hpp>
-#include <openpose3d/headers.hpp>
 
 // See all the available parameter options withe the `--help` flag. E.g. `./build/examples/openpose/openpose.bin --help`.
 // Note: This command will show you flags for other unnecessary 3rdparty files. Check only the flags for the OpenPose
@@ -33,6 +31,8 @@
 DEFINE_int32(logging_level,             3,              "The logging level. Integer in the range [0, 255]. 0 will output any log() message, while"
                                                         " 255 will not output any. Current OpenPose library messages are in the range 0-4: 1 for"
                                                         " low priority messages and 4 for important ones.");
+// Producer
+DEFINE_string(image_dir,                "examples/media/",      "Process a directory of images. Read all standard formats (jpg, png, bmp, etc.).");
 // OpenPose
 DEFINE_string(model_folder,             "models/",      "Folder path (absolute or relative) where the models (pose, face, ...) are located.");
 DEFINE_string(resolution,               "1280x720",     "The image resolution (display and output). Use \"-1x-1\" to force the program to use the"
@@ -70,7 +70,7 @@ DEFINE_bool(heatmaps_add_PAFs,          false,          "Same functionality as `
 DEFINE_int32(heatmaps_scale,            2,              "Set 0 to scale op::Datum::poseHeatMaps in the range [0,1], 1 for [-1,1]; and 2 for integer"
                                                         " rounded [0,255].");
 // OpenPose Face
-DEFINE_bool(face,                       true,           "Enables face keypoint detection. It will share some parameters from the body pose, e.g."
+DEFINE_bool(face,                       false,          "Enables face keypoint detection. It will share some parameters from the body pose, e.g."
                                                         " `model_folder`. Note that this will considerable slow down the performance and increse"
                                                         " the required GPU memory. In addition, the greater number of people on the image, the"
                                                         " slower OpenPose will be.");
@@ -78,7 +78,7 @@ DEFINE_string(face_net_resolution,      "368x368",      "Multiples of 16 and squ
                                                         " detector. 320x320 usually works fine while giving a substantial speed up when multiple"
                                                         " faces on the image.");
 // OpenPose Hand
-DEFINE_bool(hand,                       true,           "Enables hand keypoint detection. It will share some parameters from the body pose, e.g."
+DEFINE_bool(hand,                       false,          "Enables hand keypoint detection. It will share some parameters from the body pose, e.g."
                                                         " `model_folder`. Analogously to `--face`, it will also slow down the performance, increase"
                                                         " the required GPU memory and its speed depends on the number of people.");
 DEFINE_string(hand_net_resolution,      "368x368",      "Multiples of 16 and squared. Analogous to `net_resolution` but applied to the hand keypoint"
@@ -105,7 +105,7 @@ DEFINE_double(render_threshold,         0.05,           "Only estimated keypoint
                                                         " rendered. Generally, a high threshold (> 0.5) will only render very clear body parts;"
                                                         " while small thresholds (~0.1) will also output guessed and occluded keypoints, but also"
                                                         " more false positives (i.e. wrong detections).");
-DEFINE_int32(render_pose,               1,              "Set to 0 for no rendering, 1 for CPU rendering (slightly faster), and 2 for GPU rendering"
+DEFINE_int32(render_pose,               2,              "Set to 0 for no rendering, 1 for CPU rendering (slightly faster), and 2 for GPU rendering"
                                                         " (slower but greater functionality, e.g. `alpha_X` flags). If rendering is enabled, it will"
                                                         " render both `outputData` and `cvOutputData` with the original image and desired body part"
                                                         " to be shown (i.e. keypoints, heat maps or PAFs).");
@@ -141,7 +141,132 @@ DEFINE_string(write_heatmaps,           "",             "Directory to write heat
 DEFINE_string(write_heatmaps_format,    "png",          "File extension and format for `write_heatmaps`, analogous to `write_images_format`."
                                                         " Recommended `png` or any compressed and lossless format.");
 
-int openpose3d()
+
+// If the user needs his own variables, he can inherit the op::Datum struct and add them
+// UserDatum can be directly used by the OpenPose wrapper because it inherits from op::Datum, just define Wrapper<UserDatum> instead of
+// Wrapper<op::Datum>
+struct UserDatum : public op::Datum
+{
+    bool boolThatUserNeedsForSomeReason;
+
+    UserDatum(const bool boolThatUserNeedsForSomeReason_ = false) :
+        boolThatUserNeedsForSomeReason{boolThatUserNeedsForSomeReason_}
+    {}
+};
+
+// The W-classes can be implemented either as a template or as simple classes given
+// that the user usually knows which kind of data he will move between the queues,
+// in this case we assume a std::shared_ptr of a std::vector of UserDatum
+
+// This worker will just read and return all the jpg files in a directory
+class UserInputClass
+{
+public:
+    UserInputClass(const std::string& directoryPath) :
+        mImageFiles{op::getFilesOnDirectory(directoryPath, "jpg")},
+        // mImageFiles{op::getFilesOnDirectory(directoryPath, std::vector<std::string>{"jpg", "png"})}, // If we want "jpg" + "png" images
+        mCounter{0},
+        mClosed{false}
+    {
+        if (mImageFiles.empty())
+            op::error("No images found on: " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
+    }
+
+    std::shared_ptr<std::vector<UserDatum>> createDatum()
+    {
+        // Close program when empty frame
+        if (mClosed || mImageFiles.size() <= mCounter)
+        {
+            op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
+            // This funtion stops this worker, which will eventually stop the whole thread system once all the frames have been processed
+            mClosed = true;
+            return nullptr;
+        }
+        else // if (!mClosed)
+        {
+            // Create new datum
+            auto datumsPtr = std::make_shared<std::vector<UserDatum>>();
+            datumsPtr->emplace_back();
+            auto& datum = datumsPtr->at(0);
+
+            // Fill datum
+            datum.cvInputData = cv::imread(mImageFiles.at(mCounter++));
+
+            // If empty frame -> return nullptr
+            if (datum.cvInputData.empty())
+            {
+                op::log("Empty frame detected on path: " + mImageFiles.at(mCounter-1) + ". Closing program.", op::Priority::High);
+                mClosed = true;
+                datumsPtr = nullptr;
+            }
+
+            return datumsPtr;
+        }
+    }
+
+    bool isFinished() const
+    {
+        return mClosed;
+    }
+
+private:
+    const std::vector<std::string> mImageFiles;
+    unsigned long long mCounter;
+    bool mClosed;
+};
+
+// This worker will just read and return all the jpg files in a directory
+class UserOutputClass
+{
+public:
+    bool display(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
+    {
+        // User's displaying/saving/other processing here
+            // datum.cvOutputData: rendered frame with pose or heatmaps
+            // datum.poseKeypoints: Array<float> with the estimated pose
+        char key = ' ';
+        if (datumsPtr != nullptr && !datumsPtr->empty())
+        {
+            cv::imshow("User worker GUI", datumsPtr->at(0).cvOutputData);
+            // Display image and sleeps at least 1 ms (it usually sleeps ~5-10 msec to display the image)
+            key = cv::waitKey(1);
+        }
+        else
+            op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
+        return (key == 27);
+    }
+    void printKeypoints(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
+    {
+        // Example: How to use the pose keypoints
+        if (datumsPtr != nullptr && !datumsPtr->empty())
+        {
+            op::log("\nKeypoints:");
+            // Accesing each element of the keypoints
+            const auto& poseKeypoints = datumsPtr->at(0).poseKeypoints;
+            op::log("Person pose keypoints:");
+            for (auto person = 0 ; person < poseKeypoints.getSize(0) ; person++)
+            {
+                op::log("Person " + std::to_string(person) + " (x, y, score):");
+                for (auto bodyPart = 0 ; bodyPart < poseKeypoints.getSize(1) ; bodyPart++)
+                {
+                    std::string valueToPrint;
+                    for (auto xyscore = 0 ; xyscore < poseKeypoints.getSize(2) ; xyscore++)
+                        valueToPrint += std::to_string(   poseKeypoints[{person, bodyPart, xyscore}]   ) + " ";
+                    op::log(valueToPrint);
+                }
+            }
+            op::log(" ");
+            // Alternative: just getting std::string equivalent
+            op::log("Face keypoints: " + datumsPtr->at(0).faceKeypoints.toString());
+            op::log("Left hand keypoints: " + datumsPtr->at(0).handKeypoints[0].toString());
+            op::log("Right hand keypoints: " + datumsPtr->at(0).handKeypoints[1].toString());
+        }
+        else
+            op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
+    }
+};
+
+int openPoseTutorialWrapper1()
 {
     // logging_level
     op::check(0 <= FLAGS_logging_level && FLAGS_logging_level <= 255, "Wrong logging_level value.", __LINE__, __FUNCTION__, __FILE__);
@@ -171,25 +296,9 @@ int openpose3d()
                                : (FLAGS_heatmaps_scale == 1 ? op::ScaleMode::ZeroToOne : op::ScaleMode::UnsignedChar ));
     op::log("", op::Priority::Low, __LINE__, __FUNCTION__, __FILE__);
 
-    // Initializing the user custom classes
-    // Frames producer (e.g. video, webcam, ...)
-    auto wPointGrey = std::make_shared<WPointGrey>();
-    // Processing
-    auto wReconstruction3D = std::make_shared<WReconstruction3D>();
-    // GUI (Display)
-    auto wRender3D = std::make_shared<WRender3D>();
-
-    op::Wrapper<std::vector<Datum3D>> opWrapper;
-    // Add custom input
-    const auto workerInputOnNewThread = true;
-    opWrapper.setWorkerInput(wPointGrey, workerInputOnNewThread);
-    // Add custom processing
-    const auto workerProcessingOnNewThread = true;
-    opWrapper.setWorkerPostProcessing(wReconstruction3D, workerProcessingOnNewThread);
-    // Add custom output
-    const auto workerOutputOnNewThread = true;
-    opWrapper.setWorkerOutput(wRender3D, workerOutputOnNewThread);
     // Configure OpenPose
+    op::Wrapper<std::vector<UserDatum>> opWrapper{op::ThreadManagerMode::Asynchronous};
+    // Pose configuration (use WrapperStructPose{} for default and recommended configuration)
     const op::WrapperStructPose wrapperStructPose{netInputSize, outputSize, keypointScale, FLAGS_num_gpu,
                                                   FLAGS_num_gpu_start, FLAGS_scale_number, (float)FLAGS_scale_gap,
                                                   op::flagsToRenderMode(FLAGS_render_pose), poseModel,
@@ -205,20 +314,46 @@ int openpose3d()
                                                   (float)FLAGS_hand_alpha_pose, (float)FLAGS_hand_alpha_heatmap, (float)FLAGS_hand_render_threshold};
     // Consumer (comment or use default argument to disable any output)
     const bool displayGui = false;
-    const bool guiVerbose = true;
+    const bool guiVerbose = false;
     const bool fullScreen = false;
     const op::WrapperStructOutput wrapperStructOutput{displayGui, guiVerbose, fullScreen, FLAGS_write_keypoint,
                                                       op::stringToDataFormat(FLAGS_write_keypoint_format), FLAGS_write_keypoint_json,
                                                       FLAGS_write_coco_json, FLAGS_write_images, FLAGS_write_images_format, FLAGS_write_video,
                                                       FLAGS_write_heatmaps, FLAGS_write_heatmaps_format};
     // Configure wrapper
+    op::log("Configuring OpenPose wrapper.", op::Priority::Low, __LINE__, __FUNCTION__, __FILE__);
     opWrapper.configure(wrapperStructPose, wrapperStructFace, wrapperStructHand, op::WrapperStructInput{}, wrapperStructOutput);
     // Set to single-thread running (e.g. for debugging purposes)
     // opWrapper.disableMultiThreading();
 
-    op::log("Starting thread(s)", op::Priority::Max);
-    // Start, run & stop threads
-    opWrapper.exec();  // It blocks this thread until all threads have finished
+    op::log("Starting thread(s)", op::Priority::High);
+    opWrapper.start();
+
+    // User processing
+    UserInputClass userInputClass(FLAGS_image_dir);
+    UserOutputClass userOutputClass;
+    bool userWantsToExit = false;
+    while (!userWantsToExit && !userInputClass.isFinished())
+    {
+        // Push frame
+        auto datumToProcess = userInputClass.createDatum();
+        if (datumToProcess != nullptr)
+        {
+            auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
+            // Pop frame
+            std::shared_ptr<std::vector<UserDatum>> datumProcessed;
+            if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
+            {
+                userWantsToExit = userOutputClass.display(datumProcessed);
+                userOutputClass.printKeypoints(datumProcessed);
+            }
+            else
+                op::log("Processed datum could not be emplaced.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
+        }
+    }
+
+    op::log("Stopping thread(s)", op::Priority::High);
+    opWrapper.stop();
 
     // Measuring total time
     const auto now = std::chrono::high_resolution_clock::now();
@@ -232,11 +367,11 @@ int openpose3d()
 int main(int argc, char *argv[])
 {
     // Initializing google logging (Caffe uses it for logging)
-    google::InitGoogleLogging("openpose3d");
+    google::InitGoogleLogging("openPoseTutorialWrapper1");
 
     // Parsing command line flags
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-    // Running openpose3d
-    return openpose3d();
+    // Running openPoseTutorialWrapper1
+    return openPoseTutorialWrapper1();
 }

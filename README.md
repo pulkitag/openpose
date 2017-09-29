@@ -149,7 +149,7 @@ Our library is open source for research purposes, and we want to continuously im
 
 5. ... etc.
 
-Just comment on GibHub or make a pull request and we will answer as soon as possible! Send us an email if you use the library to make a cool demo or YouTube video!
+Just comment on GitHub or make a pull request and we will answer as soon as possible! Send us an email if you use the library to make a cool demo or YouTube video!
 
 
 
@@ -161,21 +161,21 @@ Please cite these papers in your publications if it helps your research (the fac
       booktitle = {CVPR},
       title = {Realtime Multi-Person 2D Pose Estimation using Part Affinity Fields},
       year = {2017}
-      }
+    }
 
     @inproceedings{simon2017hand,
       author = {Tomas Simon and Hanbyul Joo and Iain Matthews and Yaser Sheikh},
       booktitle = {CVPR},
       title = {Hand Keypoint Detection in Single Images using Multiview Bootstrapping},
       year = {2017}
-      }
+    }
 
     @inproceedings{wei2016cpm,
       author = {Shih-En Wei and Varun Ramakrishna and Takeo Kanade and Yaser Sheikh},
       booktitle = {CVPR},
       title = {Convolutional pose machines},
       year = {2016}
-      }
+    }
 
 
 

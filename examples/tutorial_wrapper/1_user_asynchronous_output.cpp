@@ -1,10 +1,12 @@
-// ------------------------- OpenPose Library Tutorial - Thread - Example 1 - Asynchronous -------------------------
-// Asynchronous mode: ideal for fast prototyping when performance is not an issue. The user emplaces/pushes and pops frames from the OpenPose wrapper when he desires to.
+// ------------------------- OpenPose Library Tutorial - Thread - Example 3 - Asynchronous Output -------------------------
+// Asynchronous output mode: ideal for fast prototyping when performance is not an issue and user wants to use the output OpenPose format. The user
+// simply gets the processed frames from the OpenPose wrapper when he desires to.
 
 // This example shows the user how to use the OpenPose wrapper class:
-    // 1. Extract and render keypoint / heatmap / PAF of that image
-    // 2. Save the results on disc
-    // 3. Display the rendered pose
+    // 1. Read folder of images / video / webcam
+    // 2. Extract and render keypoint / heatmap / PAF of that image
+    // 3. Save the results on disk
+    // 4. User displays the rendered pose
     // Everything in a multi-thread scenario
 // In addition to the previous OpenPose modules, we also need to use:
     // 1. `core` module:
@@ -15,27 +17,12 @@
 
 // C++ std library dependencies
 #include <chrono> // `std::chrono::` functions and classes, e.g. std::chrono::milliseconds
-#include <string>
 #include <thread> // std::this_thread
-#include <vector>
 // Other 3rdparty dependencies
 #include <gflags/gflags.h> // DEFINE_bool, DEFINE_int32, DEFINE_int64, DEFINE_uint64, DEFINE_double, DEFINE_string
 #include <glog/logging.h> // google::InitGoogleLogging
-
 // OpenPose dependencies
-// Option a) Importing all modules
 #include <openpose/headers.hpp>
-// Option b) Manually importing the desired modules. Recommended if you only intend to use a few modules.
-// #include <openpose/core/headers.hpp>
-// #include <openpose/experimental/headers.hpp>
-// #include <openpose/face/headers.hpp>
-// #include <openpose/filestream/headers.hpp>
-// #include <openpose/gui/headers.hpp>
-// #include <openpose/pose/headers.hpp>
-// #include <openpose/producer/headers.hpp>
-// #include <openpose/thread/headers.hpp>
-// #include <openpose/utilities/headers.hpp>
-// #include <openpose/wrapper/headers.hpp>
 
 // See all the available parameter options withe the `--help` flag. E.g. `./build/examples/openpose/openpose.bin --help`.
 // Note: This command will show you flags for other unnecessary 3rdparty files. Check only the flags for the OpenPose
@@ -45,7 +32,23 @@ DEFINE_int32(logging_level,             3,              "The logging level. Inte
                                                         " 255 will not output any. Current OpenPose library messages are in the range 0-4: 1 for"
                                                         " low priority messages and 4 for important ones.");
 // Producer
-DEFINE_string(image_dir,                "examples/media/",      "Process a directory of images. Read all standard formats (jpg, png, bmp, etc.).");
+DEFINE_int32(camera,                    -1,             "The camera index for cv::VideoCapture. Integer in the range [0, 9]. Select a negative"
+                                                        " number (by default), to auto-detect and open the first available camera.");
+DEFINE_string(camera_resolution,        "1280x720",     "Size of the camera frames to ask for.");
+DEFINE_double(camera_fps,               30.0,           "Frame rate for the webcam (only used when saving video from webcam). Set this value to the"
+                                                        " minimum value between the OpenPose displayed speed and the webcam real frame rate.");
+DEFINE_string(video,                    "",             "Use a video file instead of the camera. Use `examples/media/video.avi` for our default"
+                                                        " example video.");
+DEFINE_string(image_dir,                "",             "Process a directory of images. Use `examples/media/` for our default example folder with 20"
+                                                        " images. Read all standard formats (jpg, png, bmp, etc.).");
+DEFINE_uint64(frame_first,              0,              "Start on desired frame number. Indexes are 0-based, i.e. the first frame has index 0.");
+DEFINE_uint64(frame_last,               -1,             "Finish on desired frame number. Select -1 to disable. Indexes are 0-based, e.g. if set to"
+                                                        " 10, it will process 11 frames (0-10).");
+DEFINE_bool(frame_flip,                 false,          "Flip/mirror each frame (e.g. for real time webcam demonstrations).");
+DEFINE_int32(frame_rotate,              0,              "Rotate each frame, 4 possible values: 0, 90, 180, 270.");
+DEFINE_bool(frames_repeat,              false,          "Repeat frames when finished.");
+DEFINE_bool(process_real_time,          false,          "Enable to keep the original source frame rate (e.g. for video). If the processing time is"
+                                                        " too long, it will skip frames. If it is too fast, it will slow it down.");
 // OpenPose
 DEFINE_string(model_folder,             "models/",      "Folder path (absolute or relative) where the models (pose, face, ...) are located.");
 DEFINE_string(resolution,               "1280x720",     "The image resolution (display and output). Use \"-1x-1\" to force the program to use the"
@@ -62,10 +65,12 @@ DEFINE_int32(keypoint_scale,            0,              "Scaling of the (x,y) co
 // OpenPose Body Pose
 DEFINE_string(model_pose,               "COCO",         "Model to be used. E.g. `COCO` (18 keypoints), `MPI` (15 keypoints, ~10% faster), "
                                                         "`MPI_4_layers` (15 keypoints, even faster but less accurate).");
-DEFINE_string(net_resolution,           "656x368",      "Multiples of 16. If it is increased, the accuracy potentially increases. If it is decreased,"
-                                                        " the speed increases. For maximum speed-accuracy balance, it should keep the closest aspect"
-                                                        " ratio possible to the images or videos to be processed. E.g. the default `656x368` is"
-                                                        " optimal for 16:9 videos, e.g. full HD (1980x1080) and HD (1280x720) videos.");
+DEFINE_string(net_resolution,           "656x368",      "Multiples of 16. If it is increased, the accuracy potentially increases. If it is"
+                                                        " decreased, the speed increases. For maximum speed-accuracy balance, it should keep the"
+                                                        " closest aspect ratio possible to the images or videos to be processed. Using `-1` in"
+                                                        " any of the dimensions, OP will choose the optimal aspect ratio depending on the user's"
+                                                        " input value. E.g. the default `-1x368` is equivalent to `656x368` in 16:9 resolutions,"
+                                                        " e.g. full HD (1980x1080) and HD (1280x720) resolutions.");
 DEFINE_int32(scale_number,              1,              "Number of scales to average.");
 DEFINE_double(scale_gap,                0.3,            "Scale gap between scales. No effect unless scale_number > 1. Initial scale is always 1."
                                                         " If you want to change the initial scale, you actually want to multiply the"
@@ -170,80 +175,26 @@ struct UserDatum : public op::Datum
 // in this case we assume a std::shared_ptr of a std::vector of UserDatum
 
 // This worker will just read and return all the jpg files in a directory
-class UserInputClass
-{
-public:
-    UserInputClass(const std::string& directoryPath) :
-        mImageFiles{op::getFilesOnDirectory(directoryPath, "jpg")},
-        // mImageFiles{op::getFilesOnDirectory(directoryPath, std::vector<std::string>{"jpg", "png"})}, // If we want "jpg" + "png" images
-        mCounter{0},
-        mClosed{false}
-    {
-        if (mImageFiles.empty())
-            op::error("No images found on: " + directoryPath, __LINE__, __FUNCTION__, __FILE__);
-    }
-
-    std::shared_ptr<std::vector<UserDatum>> createDatum()
-    {
-        // Close program when empty frame
-        if (mClosed || mImageFiles.size() <= mCounter)
-        {
-            op::log("Last frame read and added to queue. Closing program after it is processed.", op::Priority::High);
-            // This funtion stops this worker, which will eventually stop the whole thread system once all the frames have been processed
-            mClosed = true;
-            return nullptr;
-        }
-        else // if (!mClosed)
-        {
-            // Create new datum
-            auto datumsPtr = std::make_shared<std::vector<UserDatum>>();
-            datumsPtr->emplace_back();
-            auto& datum = datumsPtr->at(0);
-
-            // Fill datum
-            datum.cvInputData = cv::imread(mImageFiles.at(mCounter++));
-
-            // If empty frame -> return nullptr
-            if (datum.cvInputData.empty())
-            {
-                op::log("Empty frame detected on path: " + mImageFiles.at(mCounter-1) + ". Closing program.", op::Priority::High);
-                mClosed = true;
-                datumsPtr = nullptr;
-            }
-
-            return datumsPtr;
-        }
-    }
-
-    bool isFinished() const
-    {
-        return mClosed;
-    }
-
-private:
-    const std::vector<std::string> mImageFiles;
-    unsigned long long mCounter;
-    bool mClosed;
-};
-
-// This worker will just read and return all the jpg files in a directory
 class UserOutputClass
 {
 public:
-    void display(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
+    bool display(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
     {
         // User's displaying/saving/other processing here
             // datum.cvOutputData: rendered frame with pose or heatmaps
             // datum.poseKeypoints: Array<float> with the estimated pose
+        char key = ' ';
         if (datumsPtr != nullptr && !datumsPtr->empty())
         {
             cv::imshow("User worker GUI", datumsPtr->at(0).cvOutputData);
-            cv::waitKey(1); // It displays the image and sleeps at least 1 ms (it usually sleeps ~5-10 msec to display the image)
+            // Display image and sleeps at least 1 ms (it usually sleeps ~5-10 msec to display the image)
+            key = cv::waitKey(1);
         }
         else
             op::log("Nullptr or empty datumsPtr found.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
+        return (key == 27);
     }
-    void printKeypoitns(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
+    void printKeypoints(const std::shared_ptr<std::vector<UserDatum>>& datumsPtr)
     {
         // Example: How to use the pose keypoints
         if (datumsPtr != nullptr && !datumsPtr->empty())
@@ -276,7 +227,7 @@ public:
     }
 };
 
-int openPoseTutorialWrapper1()
+int openPoseTutorialWrapper3()
 {
     // logging_level
     op::check(0 <= FLAGS_logging_level && FLAGS_logging_level <= 255, "Wrong logging_level value.", __LINE__, __FUNCTION__, __FILE__);
@@ -290,11 +241,13 @@ int openPoseTutorialWrapper1()
     // outputSize
     const auto outputSize = op::flagsToPoint(FLAGS_resolution, "1280x720");
     // netInputSize
-    const auto netInputSize = op::flagsToPoint(FLAGS_net_resolution, "656x368");
+    const auto netInputSize = op::flagsToPoint(FLAGS_net_resolution, "-1x368");
     // faceNetInputSize
     const auto faceNetInputSize = op::flagsToPoint(FLAGS_face_net_resolution, "368x368 (multiples of 16)");
     // handNetInputSize
     const auto handNetInputSize = op::flagsToPoint(FLAGS_hand_net_resolution, "368x368 (multiples of 16)");
+    // producerType
+    const auto producerSharedPtr = op::flagsToProducer(FLAGS_image_dir, FLAGS_video, FLAGS_camera, FLAGS_camera_resolution, FLAGS_camera_fps);
     // poseModel
     const auto poseModel = op::flagsToPoseModel(FLAGS_model_pose);
     // keypointScale
@@ -307,7 +260,8 @@ int openPoseTutorialWrapper1()
     op::log("", op::Priority::Low, __LINE__, __FUNCTION__, __FILE__);
 
     // Configure OpenPose
-    op::Wrapper<std::vector<UserDatum>> opWrapper{op::ThreadManagerMode::Asynchronous};
+    op::log("Configuring OpenPose wrapper.", op::Priority::Low, __LINE__, __FUNCTION__, __FILE__);
+    op::Wrapper<std::vector<UserDatum>> opWrapper{op::ThreadManagerMode::AsynchronousOut};
     // Pose configuration (use WrapperStructPose{} for default and recommended configuration)
     const op::WrapperStructPose wrapperStructPose{netInputSize, outputSize, keypointScale, FLAGS_num_gpu,
                                                   FLAGS_num_gpu_start, FLAGS_scale_number, (float)FLAGS_scale_gap,
@@ -322,6 +276,9 @@ int openPoseTutorialWrapper1()
     const op::WrapperStructHand wrapperStructHand{FLAGS_hand, handNetInputSize, FLAGS_hand_scale_number, (float)FLAGS_hand_scale_range,
                                                   FLAGS_hand_tracking, op::flagsToRenderMode(FLAGS_hand_render, FLAGS_render_pose),
                                                   (float)FLAGS_hand_alpha_pose, (float)FLAGS_hand_alpha_heatmap, (float)FLAGS_hand_render_threshold};
+    // Producer (use default to disable any input)
+    const op::WrapperStructInput wrapperStructInput{producerSharedPtr, FLAGS_frame_first, FLAGS_frame_last, FLAGS_process_real_time,
+                                                    FLAGS_frame_flip, FLAGS_frame_rotate, FLAGS_frames_repeat};
     // Consumer (comment or use default argument to disable any output)
     const bool displayGui = false;
     const bool guiVerbose = false;
@@ -331,7 +288,7 @@ int openPoseTutorialWrapper1()
                                                       FLAGS_write_coco_json, FLAGS_write_images, FLAGS_write_images_format, FLAGS_write_video,
                                                       FLAGS_write_heatmaps, FLAGS_write_heatmaps_format};
     // Configure wrapper
-    opWrapper.configure(wrapperStructPose, wrapperStructFace, wrapperStructHand, op::WrapperStructInput{}, wrapperStructOutput);
+    opWrapper.configure(wrapperStructPose, wrapperStructFace, wrapperStructHand, wrapperStructInput, wrapperStructOutput);
     // Set to single-thread running (e.g. for debugging purposes)
     // opWrapper.disableMultiThreading();
 
@@ -339,25 +296,19 @@ int openPoseTutorialWrapper1()
     opWrapper.start();
 
     // User processing
-    UserInputClass userInputClass(FLAGS_image_dir);
     UserOutputClass userOutputClass;
-    while (!userInputClass.isFinished())
+    bool userWantsToExit = false;
+    while (!userWantsToExit)
     {
-        // Push frame
-        auto datumToProcess = userInputClass.createDatum();
-        if (datumToProcess != nullptr)
+        // Pop frame
+        std::shared_ptr<std::vector<UserDatum>> datumProcessed;
+        if (opWrapper.waitAndPop(datumProcessed))
         {
-            auto successfullyEmplaced = opWrapper.waitAndEmplace(datumToProcess);
-            // Pop frame
-            std::shared_ptr<std::vector<UserDatum>> datumProcessed;
-            if (successfullyEmplaced && opWrapper.waitAndPop(datumProcessed))
-            {
-                userOutputClass.display(datumProcessed);
-                userOutputClass.printKeypoitns(datumProcessed);
-            }
-            else
-                op::log("Processed datum could not be emplaced.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
+            userWantsToExit = userOutputClass.display(datumProcessed);;
+            userOutputClass.printKeypoints(datumProcessed);
         }
+        else
+            op::log("Processed datum could not be emplaced.", op::Priority::High, __LINE__, __FUNCTION__, __FILE__);
     }
 
     op::log("Stopping thread(s)", op::Priority::High);
@@ -375,11 +326,11 @@ int openPoseTutorialWrapper1()
 int main(int argc, char *argv[])
 {
     // Initializing google logging (Caffe uses it for logging)
-    google::InitGoogleLogging("openPoseTutorialWrapper1");
+    google::InitGoogleLogging("openPoseTutorialWrapper3");
 
     // Parsing command line flags
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-    // Running openPoseTutorialWrapper1
-    return openPoseTutorialWrapper1();
+    // Running openPoseTutorialWrapper3
+    return openPoseTutorialWrapper3();
 }
