@@ -1,7 +1,7 @@
 set(EXAMPLE_FILES 
   1_extract_from_image.cpp
-  2_extract_pose_or_heatmat_from_image.cpp)
-
+  2_extract_pose_or_heatmat_from_image.cpp
+  )
 foreach(EXAMPLE_FILE ${EXAMPLE_FILES})
 
   get_filename_component(SOURCE_NAME ${EXAMPLE_FILE} NAME_WE)

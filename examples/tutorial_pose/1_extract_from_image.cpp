@@ -18,6 +18,11 @@
 #include <openpose/pose/headers.hpp>
 #include <openpose/utilities/headers.hpp>
 
+#include <cv.h>
+#include <highgui.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <stdio.h>
+
 // See all the available parameter options withe the `--help` flag. E.g. `./build/examples/openpose/openpose.bin --help`.
 // Note: This command will show you flags for other unnecessary 3rdparty files. Check only the flags for the OpenPose
 // executable. E.g. for `openpose.bin`, look for `Flags from examples/openpose/openpose.cpp:`.
@@ -52,6 +57,11 @@ DEFINE_double(render_threshold,         0.05,           "Only estimated keypoint
                                                         " more false positives (i.e. wrong detections).");
 DEFINE_double(alpha_pose,               0.6,            "Blending factor (range 0-1) for the body part rendering. 1 will show it completely, 0 will"
                                                         " hide it. Only valid for GPU rendering.");
+//Options for saving the rendered images
+DEFINE_bool(disable_display,            false,          "If enabled, no pictures would be displayed.");
+DEFINE_bool(save_results,               false,          "If enabled, results are also stored.");
+DEFINE_string(save_im_dir,              "output",       "Specify where the output images should be stored.");
+
 
 int openPoseTutorialPose1()
 {
@@ -112,10 +122,18 @@ int openPoseTutorialPose1()
     poseRenderer.renderPose(outputArray, poseKeypoints);
     // Step 5 - OpenPose output format to cv::Mat
     auto outputImage = opOutputToCvMat.formatToCvMat(outputArray);
+    cv::imwrite( "example.jpg", outputImage);
 
     // ------------------------- SHOWING RESULT AND CLOSING -------------------------
-    // Step 1 - Show results
-    frameDisplayer.displayFrame(outputImage, 0); // Alternative: cv::imshow(outputImage) + cv::waitKey(0)
+    if (!FLAGS_disable_display){
+      // Step 1 - Show results
+      frameDisplayer.displayFrame(outputImage, 0); // Alternative: cv::imshow(outputImage) + cv::waitKey(0)
+    }
+    //Save the image 
+    //if (FLAGS_save_results){
+    //  
+    //}  
+  
     // Step 2 - Logging information message
     op::log("Example 1 successfully finished.", op::Priority::High);
     // Return successful message
