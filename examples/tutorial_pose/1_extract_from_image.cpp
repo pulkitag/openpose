@@ -124,7 +124,19 @@ int openPoseTutorialPose1()
     poseRenderer.renderPose(outputArray, poseKeypoints);
     // Step 5 - OpenPose output format to cv::Mat
     auto outputImage = opOutputToCvMat.formatToCvMat(outputArray);
-    cv::imwrite( "example.jpg", outputImage);
+    std::string outDir = FLAGS_save_im_dir + "/example.jpg";
+    cv::imwrite( outDir, outputImage);
+    //std::cout << poseKeypoints[0];
+    std::vector<int> mSize = poseKeypoints.getSize();
+    std::cout << "size of pose vec: " << mSize[0] << std::endl;
+    std::cout << "size of pose vec: " << mSize[1] << std::endl;
+    std::cout << "size of pose vec: " << mSize[2] << std::endl;
+  
+    //Keypoint Saver
+    std::string dirName = "results";
+    op::KeypointJsonSaver ksaver{dirName};
+    
+
 
     // ------------------------- SHOWING RESULT AND CLOSING -------------------------
     if (!FLAGS_disable_display){
