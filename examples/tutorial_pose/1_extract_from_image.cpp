@@ -131,9 +131,9 @@ int openPoseTutorialPose1()
     std::cout << "size of pose vec: " << mSize[2] << std::endl;
   
     //Keypoint Saver
-    std::string dirName = "results";
+    const std::string dirName = "results/";
     op::KeypointJsonSaver ksaver{dirName};
-    
+    //kSaver.save(poseKeypoints,)
 
 
     // ------------------------- SHOWING RESULT AND CLOSING -------------------------

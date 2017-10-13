@@ -177,17 +177,26 @@ int openPoseDemo()
     // Applying user defined configuration - Google flags to program variables
     // outputSize
     const auto outputSize = op::flagsToPoint(FLAGS_output_resolution, "-1x-1");
+    op::log("Point 1", op::Priority::High);
+    
     // netInputSize
     const auto netInputSize = op::flagsToPoint(FLAGS_net_resolution, "-1x368");
     // faceNetInputSize
     const auto faceNetInputSize = op::flagsToPoint(FLAGS_face_net_resolution, "368x368 (multiples of 16)");
+    op::log("Point 2", op::Priority::High);
+    
     // handNetInputSize
     const auto handNetInputSize = op::flagsToPoint(FLAGS_hand_net_resolution, "368x368 (multiples of 16)");
+    op::log("Point 3", op::Priority::High);
+    
     // producerType
     const auto producerSharedPtr = op::flagsToProducer(FLAGS_image_dir, FLAGS_video, FLAGS_ip_camera, FLAGS_camera,
                                                        FLAGS_camera_resolution, FLAGS_camera_fps);
+    op::log("Loading Pose Model", op::Priority::High);
     // poseModel
     const auto poseModel = op::flagsToPoseModel(FLAGS_model_pose);
+    op::log("Loaded Pose Model", op::Priority::High);
+     
     // keypointScale
     const auto keypointScale = op::flagsToScaleMode(FLAGS_keypoint_scale);
     // heatmaps to add

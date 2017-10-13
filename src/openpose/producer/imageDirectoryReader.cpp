@@ -10,6 +10,7 @@ namespace op
         try
         {
             // Get files on directory with the desired extensions
+            //log("I am here", Priority::High, __LINE__, __FUNCTION__, __FILE__);
             const std::vector<std::string> extensions{"bmp", "dib", "pbm", "pgm", "ppm", "sr", "ras",   // Completely supported by OpenCV
                                                       "jpg", "jpeg", "png"};                            // Most of them supported by OpenCV
             const auto imagePaths = getFilesOnDirectory(imageDirectoryPath, extensions);

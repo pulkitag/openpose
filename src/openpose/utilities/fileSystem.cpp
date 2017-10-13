@@ -27,6 +27,7 @@ namespace op
     {
         try
         {
+            //log("I am having existential crisis", Priority::High, __LINE__, __FUNCTION__, __FILE__);
             return boost::filesystem::exists(directoryPath);
         }
         catch (const std::exception& e)
@@ -152,14 +153,20 @@ namespace op
     {
         try
         {
+            //log("I am here in finding files", Priority::High, __LINE__, __FUNCTION__, __FILE__);
+            //log(directoryPath, Priority::High, __LINE__, __FUNCTION__, __FILE__);
             // Check folder exits
             if (!exist(directoryPath))
                 error("Folder " + directoryPath + " does not exist.", __LINE__, __FUNCTION__, __FILE__);
+            //log("Directory exists", Priority::High, __LINE__, __FUNCTION__, __FILE__);
+            
             // Read images
             std::vector<std::string> filePaths;
-            for (auto& file : boost::make_iterator_range(boost::filesystem::directory_iterator{directoryPath}, {}))
+            for (auto& file : boost::make_iterator_range(boost::filesystem::directory_iterator{directoryPath}, {})){
                 if (!boost::filesystem::is_directory(file.status()))                // Skip directories
                     filePaths.emplace_back(file.path().string());
+                //log("Directory exists", Priority::High, __LINE__, __FUNCTION__, __FILE__);
+            }
             // Check #files > 0
             if (filePaths.empty())
                 error("No files were found on " + directoryPath, __LINE__, __FUNCTION__, __FILE__);

@@ -182,7 +182,6 @@ include_directories(
   ${OpenCV_INCLUDE_DIRS}
   /usr/include/python2.7
   /usr/local/lib/python2.7/dist-packages/numpy/core/include
-  /home/pulkit/pkgs/boost
   )
 
 ### ADD SUBDIRECTORIES

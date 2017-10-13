@@ -112,8 +112,11 @@ namespace op
             log("", Priority::Low, __LINE__, __FUNCTION__, __FILE__);
             const auto type = flagsToProducerType(imageDirectory, videoPath, ipCameraPath, webcamIndex);
 
-            if (type == ProducerType::ImageDirectory)
+            if (type == ProducerType::ImageDirectory){
+                //log("TRYING TO READ IMAGE DIRECTORY", Priority::High, __LINE__, __FUNCTION__, __FILE__);
+                //log(imageDirectory, Priority::High, __LINE__, __FUNCTION__, __FILE__);
                 return std::make_shared<ImageDirectoryReader>(imageDirectory);
+            }
             else if (type == ProducerType::Video)
                 return std::make_shared<VideoReader>(videoPath);
             else if (type == ProducerType::IPCamera)
